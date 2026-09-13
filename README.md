@@ -276,17 +276,30 @@ subfolders and evaluated by the Docker/Podman container.
 
 ## Reproducing Paper Results
 
-The pass@1 results of every experiment in the paper ship with this repository
-in `outputs_public/`: 2,436 `pass_rates.json` files covering 20 models ×
-3 datasets × (4 adversarial attacks + 2 noise types × 6 intensity levels) ×
-quantization levels. Each file holds `{"base": <pass@1>, "plus": <pass@1>}` —
-the base and plus test-set variants for HumanEval/MBPP, or the Descriptive and
-Lazy prompt variants for CanItEdit. The clean (unattacked) baseline for a
-model+quantization is the noise entry at level `0.0`. CodeGen models have no
-CanItEdit results (their samples exceed the 2,048-token context window), so
-those table cells render as `-`.
+All experimental results — the pass@1 summaries plus the raw data (adversarial
+prompts, model generations, and per-sample evaluation results) — are archived
+on Zenodo (~630 MB compressed):
 
-All tables and figures regenerate out of the box:
+> **DOI**: [10.5281/zenodo.22737766](https://zenodo.org/records/22737766)
+
+Download `RobustEval-CLM-raw-results.tar.gz` and extract it at the repository
+root, where it unpacks as `outputs_public/`:
+
+```bash
+wget https://zenodo.org/records/22737766/files/RobustEval-CLM-raw-results.tar.gz
+tar xzf RobustEval-CLM-raw-results.tar.gz    # -> outputs_public/
+```
+
+The tree holds 2,436 experiment folders — 20 models × 3 datasets ×
+(4 adversarial attacks + 2 noise types × 6 intensity levels) × quantization
+levels — each with a `pass_rates.json` (`{"base": <pass@1>, "plus": <pass@1>}`:
+the base and plus test-set variants for HumanEval/MBPP, or the Descriptive and
+Lazy prompt variants for CanItEdit) next to the raw prompts and generations.
+The clean (unattacked) baseline for a model+quantization is the noise entry at
+level `0.0`. CodeGen models have no CanItEdit results (their samples exceed
+the 2,048-token context window), so those table cells render as `-`.
+
+With the archive in place, all tables and figures regenerate directly:
 
 ```bash
 uv sync --extra scripts    # matplotlib / scipy
@@ -307,15 +320,6 @@ Additional analysis scripts (all read `outputs_public/` the same way):
 | `scripts/plot_noise_per_model.py` | `noise_plots/<model>.{pdf,png}` — per-model noise curves. |
 | `scripts/stat_attack_drop.py` | Per-attack performance-drop CSV + plot. |
 | `scripts/avg_quant_drop.py` | Average clean pass@1 cost of 8-bit / 4-bit quantization. |
-
-The full raw data — adversarial prompts, model generations, and per-sample
-evaluation results (~630 MB compressed) — is archived separately:
-
-> **Raw-data archive DOI / download**: _`TODO: <replace with Zenodo DOI or direct download URL>`_
-
-The archive extracts as `outputs_public/`; unpacking it at the repository root
-overlays the committed tree, placing the raw files next to each
-`pass_rates.json`.
 
 ## Repository Layout
 
@@ -339,7 +343,7 @@ scripts/
 ├── generate_all.py                 # regenerate all paper tables and figures
 ├── run_experiments.sh              # batch driver: models x datasets x attacks x quant
 └── ...                             # statistics and plotting scripts
-outputs_public/                     # pass@1 results for all paper experiments
+outputs_public/                     # extracted Zenodo results archive (gitignored)
 statistic_results/                  # generated tables / figures (gitignored)
 ```
 

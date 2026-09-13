@@ -43,6 +43,7 @@ build/
 .envrc
 .venv/
 outputs/
+outputs_public/
 plots/
 noise_plots/
 statistic_results/
