@@ -21,8 +21,15 @@ import numpy as np
 from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from metadata import (ATTACKS, DATASETS, MODELS, NOISE_LEVELS, NOISE_TYPES, QUANTIZED_TYPES,
-                      outputs_dir)
+from metadata import (
+    ATTACKS,
+    DATASETS,
+    MODELS,
+    NOISE_LEVELS,
+    NOISE_TYPES,
+    QUANTIZED_TYPES,
+    outputs_dir,
+)
 
 OUTPUTS_DIR = outputs_dir()
 

@@ -5,18 +5,19 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from evalplus.data import get_human_eval_plus, get_mbpp_plus
+
 from src.core.datasets.dataset_wrapper import AdversarialDatasetWrapper
 from src.core.models.base_model import BaseModel
 from src.evaluator.attack_evaluator.attack_registry import AttackRegistry
 from src.evaluator.attack_evaluator.attacks.base_attack import BaseAttack
-from src.evaluator.utils.evaluation import evaluator, canitedit_evaluator
+from src.evaluator.utils.evaluation import canitedit_evaluator, evaluator
 from src.utils.content_protection import mask_protected_content, restore
 from src.utils.function_extractor import extract_code_from_markdown, extract_functions
-
 
 # ---------------------------------------------------------------------------
 # CanItEdit helper utilities
 # ---------------------------------------------------------------------------
+
 
 def _build_edit_prompt(old: str, instr: str) -> str:
     """Build the zero-shot edit prompt for CanItEdit."""

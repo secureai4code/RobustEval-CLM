@@ -19,8 +19,15 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.metadata import (ATTACKS, DATASETS, MODELS, NOISE_LEVELS, NOISE_TYPES, QUANTIZED_TYPES,
-                              outputs_dir)
+from scripts.metadata import (
+    ATTACKS,
+    DATASETS,
+    MODELS,
+    NOISE_LEVELS,
+    NOISE_TYPES,
+    QUANTIZED_TYPES,
+    outputs_dir,
+)
 
 OUTPUTS_DIR = outputs_dir()
 RESULTS_DIR = ROOT / "statistic_results"

@@ -11,7 +11,6 @@ sys.path.insert(0, str(ROOT))
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-
 from metadata import MODELS, outputs_dir
 
 _SIZE_PATTERN = re.compile(r"(\d+(?:\.\d+)?[bBmMkK])", re.IGNORECASE)

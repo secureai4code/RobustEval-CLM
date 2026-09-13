@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 from matplotlib.patches import Patch
-
 from metadata import DATASETS, MODELS, QUANTIZED_TYPES, outputs_dir
 
 OUTPUTS_DIR = outputs_dir()

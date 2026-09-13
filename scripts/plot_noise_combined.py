@@ -10,7 +10,6 @@ sys.path.insert(0, str(ROOT))
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-
 from metadata import NOISE_LEVELS, outputs_dir
 
 OUTPUT_DIR = outputs_dir()

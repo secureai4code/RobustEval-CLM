@@ -39,7 +39,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .base_attack import BaseAttack
 
-
 _VALID_INPUT_TYPES = {"prompt", "code", "instruction"}
 _KNOWN_DATASETS: Tuple[str, ...] = ("mbpp", "humaneval", "canitedit")
 

@@ -4,8 +4,8 @@ from typing import List, Literal, Optional, Set, Union
 
 import torch
 from huggingface_hub.constants import HF_HOME
-from tqdm import tqdm
 from torch import dtype
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from transformers.generation import GenerationConfig
 
@@ -862,6 +862,7 @@ class VLLMQuantizedModel(BaseModel):
         copy any that are missing from the original HF hub snapshot.
         """
         import shutil
+
         from huggingface_hub import snapshot_download
 
         extra_files = [
