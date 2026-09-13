@@ -2,6 +2,27 @@ import re
 from typing import List, Optional, Tuple
 
 
+def extract_code_from_markdown(markdown: str) -> Optional[str]:
+    """Extract the first markdown code block from text.
+
+    Strips the language tag if present. Returns None if no code block found.
+
+    Args:
+        markdown: Text that may contain markdown code blocks.
+
+    Returns:
+        The extracted code string, or None if no code block found.
+    """
+    pattern = re.compile(r'```(?:\w+)?\n(.*?)```', re.DOTALL)
+    matches = pattern.findall(markdown)
+
+    if not matches:
+        return None
+
+    code = max(matches, key=len).strip()
+    return code if code else None
+
+
 def extract_functions(content: str) -> str:
     """
     Extract code blocks while handling indentation and filtering unnecessary imports.
@@ -29,7 +50,7 @@ def extract_functions(content: str) -> str:
     # Extract only necessary elements
     functions = find_function_blocks(content)
     necessary_imports = find_necessary_imports(content)
-    
+
     # Combine the elements
     result = []
     if necessary_imports:
@@ -38,7 +59,7 @@ def extract_functions(content: str) -> str:
             result.append("")  # Add blank line between imports and functions
     
     if functions:
-        result.extend(functions)
+        result.append(functions[0])
     
     return '\n'.join(result)
 

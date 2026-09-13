@@ -71,6 +71,8 @@ class TranslationAttack(BaseAttack):
             return '\n'.join([input_text_lines[0], attack_line, input_text_lines[2], input_text_lines[3]])
         elif self.config['input_type'] == 'code':
             return self._attack_code_comments(input_text)
+        elif self.config['input_type'] == 'instruction':
+            return self._attack_prompt(input_text)
         raise ValueError(f"Unknown input type: {self.config['input_type']}")
 
     def _attack_prompt(self, prompt: str) -> str:

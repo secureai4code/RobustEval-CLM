@@ -52,8 +52,8 @@ class ChatGPTAttack(BaseAttack):
         if not isinstance(self.config['api_path'], str):
             print(self.config)
             raise ValueError("openai_api_key must be a string")
-        if self.config['input_type'] not in ['prompt', 'code']:
-            raise ValueError("input_type must be either 'prompt' or 'code'")
+        if self.config['input_type'] not in ['prompt', 'code', 'instruction']:
+            raise ValueError("input_type must be 'prompt', 'code', or 'instruction'")
         
         # Validate attack_type if provided
         if 'attack_type' in self.config:
@@ -144,6 +144,9 @@ class ChatGPTAttack(BaseAttack):
             ])
         elif self.config['input_type'] == 'code':
             raise NotImplementedError("Code modification not implemented yet")
+        elif self.config['input_type'] == 'instruction':
+            attack_prompt = self._generate_attack_prompt(input_text, current_attack)
+            return self._get_chatgpt_response(attack_prompt, current_attack)
         raise ValueError(f"Unknown input type: {self.config['input_type']}")
 
 

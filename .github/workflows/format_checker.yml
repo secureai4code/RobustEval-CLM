@@ -12,7 +12,7 @@ on:
       - dev
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   code-quality:
@@ -43,25 +43,8 @@ jobs:
           default_section = THIRDPARTY" > .isort.cfg
 
       - name: Check import order
-        continue-on-error: true
         run: |
           isort . --check-only --diff
-
-      - name: Configure Git Authentication
-        run: |
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-      
-      - name: Auto-fix imports (on push to dev only)
-        if: github.event_name == 'push'
-        run: |
-          isort .
-          if [[ -n $(git status --porcelain) ]]; then
-            git config --local user.email "github-actions[bot]@users.noreply.github.com"
-            git config --local user.name "github-actions[bot]"
-            git add .
-            git commit -m "Fix import order using isort"
-            git push
-          fi
 
       - name: Run flake8
         run: |

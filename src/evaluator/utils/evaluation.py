@@ -332,6 +332,224 @@ def evaluator(
     return results
 
 
+# ---------------------------------------------------------------------------
+# CanItEdit evaluation (Docker-based)
+# ---------------------------------------------------------------------------
+
+def canitedit_evaluator(completions_dir: str) -> dict:
+    """Evaluate CanItEdit completions using the Docker evaluator.
+
+    Runs the ``ghcr.io/nuprl/canitedit`` Docker container, reads the produced
+    ``.results.json.gz`` files, and computes pass@1 for both instruction kinds.
+
+    Results are mapped to the standard adversarial results format:
+    - ``base`` = ``instruction_descriptive``
+    - ``plus`` = ``instruction_lazy``
+
+    Args:
+        completions_dir: Directory containing ``.json.gz`` completion files.
+
+    Returns:
+        Results dict ``{date, hash, eval, pass_at_k: {base: ..., plus: ...}}``.
+    """
+    import gzip
+    import subprocess
+    from pathlib import Path
+
+    comp_dir = Path(completions_dir)
+
+    _run_canitedit_docker(comp_dir)
+
+    descriptive_pass1 = _compute_canitedit_pass1(comp_dir, "instruction_descriptive")
+    lazy_pass1 = _compute_canitedit_pass1(comp_dir, "instruction_lazy")
+
+    eval_dict = _collect_canitedit_eval(comp_dir)
+
+    results = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "hash": "canitedit",
+        "eval": eval_dict,
+        "pass_at_k": {
+            "base": {"pass@1": descriptive_pass1},
+            "plus": {"pass@1": lazy_pass1},
+        },
+    }
+
+    cprint("canitedit (instruction_descriptive)", "red")
+    cprint(f"pass@1:\t{descriptive_pass1:.3f}", "red")
+    cprint("canitedit (instruction_lazy)", "green")
+    cprint(f"pass@1:\t{lazy_pass1:.3f}", "green")
+
+    return results
+
+
+def _run_canitedit_docker(
+    comp_dir,
+    image: str = "ghcr.io/nuprl/canitedit",
+) -> bool:
+    """Run the CanItEdit Docker evaluator on *comp_dir*. Returns True on success."""
+    import subprocess
+    from pathlib import Path
+
+    comp_dir = Path(comp_dir)
+
+    completion_files = [
+        p for p in comp_dir.glob("*.json.gz") if ".results." not in p.name
+    ]
+    if not completion_files:
+        print("No completion files to evaluate.")
+        return True
+
+    pending = []
+    for path in completion_files:
+        base = path.name.replace(".json.gz", "")
+        results_path = path.parent / f"{base}.results.json.gz"
+        if not results_path.exists():
+            pending.append(path)
+
+    if not pending:
+        print(
+            f"Cache hit: all {len(completion_files)} completion(s) already "
+            "have results. Skipping Docker."
+        )
+        return True
+
+    print(f"Evaluating {len(pending)}/{len(completion_files)} completions via Docker.")
+
+    runtime = "podman" if _has_container_runtime("podman") else "docker"
+
+    if not _container_image_exists(runtime, image):
+        print(f"Pulling {image} (one-time download)...")
+        try:
+            subprocess.run([runtime, "pull", image], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            print(f"Failed to pull image: {exc}")
+            return False
+
+    abs_path = comp_dir.resolve()
+    cmd = [
+        runtime, "run", "--rm", "--network", "none",
+        "--volume", f"{abs_path}:/data:rw",
+        image, "--dir", "/data", "--output-dir", "/data",
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(f"Docker evaluator failed: {exc}")
+        return False
+
+
+def _has_container_runtime(name: str) -> bool:
+    import subprocess
+    try:
+        subprocess.run([name, "--version"], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def _container_image_exists(runtime: str, image: str) -> bool:
+    import subprocess
+    try:
+        result = subprocess.run(
+            [runtime, "images", "-q", image],
+            capture_output=True, text=True, check=True,
+        )
+        return bool(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def _canitedit_pass1_estimator(n: int, c: int, k: int = 1) -> float:
+    """Unbiased pass@k estimator (from Chen et al., Codex)."""
+    if n - c < k:
+        return 1.0
+    return 1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))
+
+
+def _compute_canitedit_pass1(comp_dir, instr_kind: str) -> float:
+    """Compute mean pass@1 from Docker result files for *instr_kind*."""
+    import gzip
+    from pathlib import Path
+
+    comp_dir = Path(comp_dir)
+    result_paths = (
+        list(comp_dir.glob("*.results.json.gz"))
+        + list(comp_dir.glob("*.results.json"))
+    )
+    filtered = [p for p in result_paths if f"_{instr_kind}." in p.name]
+
+    if not filtered:
+        return 0.0
+
+    pass_values = []
+    for path in filtered:
+        try:
+            if path.name.endswith(".gz"):
+                with gzip.open(path, "rt") as f:
+                    data = json.load(f)
+            else:
+                with open(path, "r") as f:
+                    data = json.load(f)
+        except Exception:
+            continue
+
+        results = data.get("results", [])
+        n = len(results)
+        c = sum(
+            1 for r in results
+            if r.get("status") == "OK" and r.get("exit_code") == 0
+        )
+        if n > 0:
+            pass_values.append(_canitedit_pass1_estimator(n, c, 1))
+
+    return float(np.mean(pass_values)) if pass_values else 0.0
+
+
+def _collect_canitedit_eval(comp_dir) -> dict:
+    """Collect per-task evaluation results from Docker output files."""
+    import gzip
+    from pathlib import Path
+
+    comp_dir = Path(comp_dir)
+    eval_dict: Dict[str, list] = {}
+
+    result_paths = (
+        list(comp_dir.glob("*.results.json.gz"))
+        + list(comp_dir.glob("*.results.json"))
+    )
+    for path in result_paths:
+        try:
+            if path.name.endswith(".gz"):
+                with gzip.open(path, "rt") as f:
+                    data = json.load(f)
+            else:
+                with open(path, "r") as f:
+                    data = json.load(f)
+        except Exception:
+            continue
+
+        stem = path.stem
+        for suffix in (".results.json", ".results"):
+            stem = stem.replace(suffix, "")
+
+        results = data.get("results", [])
+        n = len(results)
+        c = sum(
+            1 for r in results
+            if r.get("status") == "OK" and r.get("exit_code") == 0
+        )
+        eval_dict[stem] = [{
+            "task_id": stem,
+            "n_completions": n,
+            "n_passed": c,
+            "passed": c > 0,
+        }]
+
+    return eval_dict
+
+
 # Example usage
 if __name__ == "__main__":
     

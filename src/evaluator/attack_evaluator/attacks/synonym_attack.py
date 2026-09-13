@@ -2,12 +2,29 @@ import random
 import re
 from typing import Any, Dict, List, Optional
 
+import nltk
 from nltk.corpus import stopwords
 from nltk.corpus import wordnet as wn
 from nltk.tag import pos_tag
 from nltk.tokenize import word_tokenize
 
 from .base_attack import BaseAttack
+
+# NLTK corpora required by this attack. Downloaded on first import (idempotent:
+# nltk.download short-circuits if the resource is already present locally).
+_NLTK_RESOURCES = (
+    "punkt",
+    "punkt_tab",
+    "averaged_perceptron_tagger",
+    "averaged_perceptron_tagger_eng",
+    "wordnet",
+    "stopwords",
+)
+for _resource in _NLTK_RESOURCES:
+    try:
+        nltk.download(_resource, quiet=True)
+    except Exception:  # network off / offline cache present; leave it to runtime
+        pass
 
 
 class SynonymAttack(BaseAttack):
@@ -43,6 +60,8 @@ class SynonymAttack(BaseAttack):
             return '\n'.join([input_text_lines[0], attack_line, input_text_lines[2], input_text_lines[3]])
         elif self.config['input_type'] == 'code':
             return self._attack_code_comments(input_text)
+        elif self.config['input_type'] == 'instruction':
+            return self._attack_prompt(input_text)
         raise ValueError(f"Unknown input type: {self.config['input_type']}")
     
     def _attack_prompt(self, prompt: str) -> str:

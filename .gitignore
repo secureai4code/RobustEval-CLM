@@ -40,6 +40,15 @@ build/
 # Project specific
 *.log
 .env
+.envrc
+.venv/
+outputs/
+outputs_public/
+plots/
+noise_plots/
+statistic_results/
+CLAUDE.md
+/TSE_Major_Revision_Benchmarking_Robustness_of_Quantized_LLMs_in_Code_Generation-2.pdf
 
 # Code style and linting
 .isort.cfg

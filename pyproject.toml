@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reval"
+version = "0.1.0"
+description = "Framework for evaluating robustness of original and quantized Code Language Models under prompt and noise perturbations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Sen Fang", email = "fangsen1996@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    # Inference / modeling
+    "torch>=2.5.1",
+    "transformers>=4.46.3",
+    "accelerate>=1.1.1",
+    "huggingface-hub>=0.26.3",
+    "vllm>=0.6.0",
+    "bitsandbytes>=0.44.0",
+    # Datasets and evaluation
+    "datasets>=3.1.0",
+    "evalplus",
+    # Prompt attacks
+    "nltk>=3.6.0",
+    "openai>=1.0.0",
+    # CLI and utilities
+    "fire>=0.5.0",
+    "numpy>=1.26",
+    "tqdm>=4.67.1",
+    "termcolor",
+    "cairosvg>=2.7.1",
+]
+
+[project.optional-dependencies]
+# Plot/statistics scripts under scripts/ use these; not needed for `reval` itself.
+scripts = [
+    "matplotlib>=3.8",
+    "pandas>=2.2",
+    "scipy>=1.11",
+]
+dev = [
+    "pytest>=8.3",
+]
+
+[project.scripts]
+reval = "src.evaluator.attack_evaluator.attack_evaluator:main"
+
+[project.urls]
+Homepage = "https://github.com/secureai4code/RobustEval-CLM"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.uv]
+# Ensure `uv sync` installs the project itself in editable mode.
+package = true

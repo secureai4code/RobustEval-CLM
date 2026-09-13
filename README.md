@@ -1,287 +1,377 @@
-# 🛡️ adversarial-codegen
+# RobustEval-CLM
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Status: Active](https://img.shields.io/badge/status-active-brightgreen.svg)](https://github.com/yourusername/adversarial-codegen)
 
-This repository evaluates the robustness of Large Language Models (LLMs) under various adversarial attacks, focusing on code generation tasks. We test both original and compressed LLMs across different datasets to provide comprehensive insights into model vulnerabilities.
+Replication package for the paper:
 
-## 📊 Overview
-Our framework provides:
-- 🔨 Implementation of various adversarial attack methods for code generation
-- 🤖 Support for multiple LLM architectures (both original and compressed)
-- 📈 Extensive evaluation across diverse coding datasets
-- 🎯 Standardized benchmarking and comparison tools
-- 📊 Visualization tools for analysis
+> **Smaller = Weaker? Benchmarking Robustness of Quantized LLMs in Code Generation**
+> Sen Fang, Weiyuan Ding, Antonio Mastropaolo, and Bowen Xu
+> *IEEE Transactions on Software Engineering (TSE)*
 
-## 🚀 Supported Models
-We currently support the following models:
-- <img src="./assets/llama_logo.jpg" width="20"> [CodeLLaMA](https://github.com/meta-llama/codellama)  <!-- Download from Meta's official repo -->
-  - llama-3.2-1b
-  - llama-3.2-3b
-  - llama-3.1-8b
-- <img src="./assets/deepseek_logo.png" width="20"> [DeepSeek](https://github.com/deepseek-ai/DeepSeek-Coder-V2)   <!-- From DeepSeek official website -->
-  - deepseek-coder-1.3b
-  - deepseek-coder-6.7b
-  - deepseek-coder-33b
+A framework for comparing the robustness of **original (full-precision) and
+quantized** Code Language Models (CLMs) under two kinds of perturbation:
 
-## 🛠️ Implemented Attack Methods
-1. ⌨️ Character Attack (char_attack)
-   - Introduces character-level perturbations
-   - Randomly change character cases
+1. **Prompt perturbation** — character-case flips, synonym substitution,
+   back-translation, and LLM-based paraphrase applied to the natural-language
+   input the model receives.
+2. **Noise perturbation** — additive Gaussian / uniform noise injected directly
+   into model weights, supported on both HF Transformers models and vLLM
+   workers (via collective RPC).
 
-2. 🔄 Synonym Attack (synonym_attack)
-   - Replaces words with semantically similar alternatives
-   - Preserves overall meaning while testing robustness
+For each (model, dataset, perturbation) triple the framework runs the same
+evaluation at multiple precisions — full precision, 8-bit, and 4-bit — so that
+robustness can be compared across quantization settings. Quantization is done
+with [BitsAndBytes](https://github.com/TimDettmers/bitsandbytes) (NF4 / int8),
+loaded natively inside vLLM (or through HF Transformers for non-vLLM backends).
 
-3. 🌐 Translation Attack (translate_attack)
-   - Applies back-translation perturbations
-   - Tests model resilience to paraphrasing
+Inference uses [vLLM](https://github.com/vllm-project/vllm) for high
+throughput; evaluation reuses [EvalPlus](https://github.com/evalplus/evalplus)
+for HumanEval+/MBPP+ and the official
+[nuprl/CanItEdit](https://github.com/nuprl/CanItEdit) container for code
+editing.
 
-## 🚀 Supported Models (In Plan)
-We will support both original LLMs and their compressed versions.
+## Supported Models
 
-- <img src="./assets/starcoder_logo.png" width="20"> [StarCoder](https://github.com/bigcode-project/starcoder)  <!-- From BigCode/HuggingFace --> :muscle:
-- <img src="./assets/codegen_logo.png" width="20"> [CodeGen](https://github.com/salesforce/CodeGen)     <!-- From Salesforce --> :muscle:
-- <img src="./assets/incoder_logo.png" width="20"> [InCoder](https://github.com/dpfried/incoder)     <!-- From Meta/Facebook --> :muscle:
-- 🎩 [Magicoder](https://github.com/ise-uiuc/magicoder) :muscle:
+Any HuggingFace causal-LM checkpoint can be used. The experiments in the paper
+cover the following families (see `scripts/metadata.py` for the full list):
 
-## 🛠️ Implemented Attack Methods (In Plan)
-1. 🎯 Natural Noise Injection
-   - ⌨️ Typos and character swaps
-   - 📝 Spacing and formatting variations
-   - 💭 Comment modifications
+| Family         | Example checkpoints |
+|----------------|---------------------|
+| StarCoder2     | `bigcode/starcoder2-{3b,7b,15b}` |
+| CodeGen-mono   | `Salesforce/codegen-{350M,2B,6B}-mono` |
+| DeepSeek-Coder | `deepseek-ai/deepseek-coder-{1.3b,6.7b,33b}-base`, `deepseek-ai/DeepSeek-Coder-V2-Lite-Base` |
+| Llama-3.x      | `meta-llama/Llama-3.2-{1B,3B}`, `meta-llama/Llama-3.1-8B` |
+| Gemma-3 (it)   | `google/gemma-3-{4b,12b,27b}-it` |
+| NextCoder      | `microsoft/NextCoder-{7B,14B,32B}` |
+| Qwen3-Coder    | `Qwen/Qwen3-Coder-30B-A3B-Instruct` (MoE) |
 
-2. 🏗️ Structural Attacks
-   - 🔄 Variable name perturbations
-   - 🔀 Control flow modifications
-   - 🔌 API usage variations
+## Datasets
 
-3. 🔄 Semantic Preserving Transformations
-   - 🔧 Code refactoring
-   - 🔁 Equivalent syntax modifications
-   - 🧮 Logic preservation with structural changes
+- **HumanEval / HumanEval+** — loaded via `evalplus`.
+- **MBPP / MBPP+** — loaded via `evalplus`.
+- **CanItEdit** — loaded from `nuprl/CanItEdit` on HuggingFace. Executes
+  completions inside the official `ghcr.io/nuprl/canitedit` container, so
+  **Docker or Podman is required** for CanItEdit evaluation.
 
-## 📚 Datasets
-- 👥 HumanEval / HumanEval Plus
-- 📘 MBPP / MBPP Plus
+## Attack Methods
 
-## ⚙️ Installation
+Registered names used with `--attack_method`:
 
-We recommend using [UV](https://github.com/astral-sh/uv) as the package installer for better dependency management and faster installation.
+The paper evaluates four adversarial attacks — `char` (character-level),
+`synonym` (word-level), `translate` (sentence-level), `destructure`
+(structure-level) — plus the `noise` weight-perturbation method.
 
-### Install UV
-First, install UV using one of the following methods:
+| Name            | What it perturbs | Notes |
+|-----------------|------------------|-------|
+| `char`          | Prompt           | Random character-case flips. |
+| `synonym`       | Prompt           | WordNet-based synonym substitution. |
+| `translate`     | Prompt           | Back-translation through mBART-50 (en → de → en). |
+| `destructure`   | Prompt           | Deterministically strips structural formatting cues (assertion keywords, doctest markers, markdown headers), collapsing the prompt into flat text. |
+| `noise`         | Model weights    | Additive Gaussian / uniform noise (`--noise_type`, `--noise_level`). Prompt is unchanged. |
+| `llm_paraphrase` | Prompt          | Precomputed LLM paraphrases loaded from a dataset (`LLM_PARAPHRASE_PATH` / `LLM_PARAPHRASE_REPO`). |
+| `llm_attack`    | Prompt           | GPT-4o-based paraphrase / semantic-preserving rewrite. Requires an OpenAI API key at `--api_path`. |
+| `natural_noise`, `semantic`, `structural`, `structured` | Prompt | Experimental. |
+
+For CanItEdit, code blocks in the instruction are masked before the attack is
+applied and restored afterwards, so that only natural-language instructions are
+perturbed.
+
+## Installation
+
+Python 3.10+ and a CUDA-capable GPU are required. Dependencies are managed
+with [uv](https://github.com/astral-sh/uv); a single command creates the
+virtualenv, resolves the lockfile, installs all runtime dependencies (including
+vLLM and BitsAndBytes), and installs `reval` itself in editable mode:
 
 ```bash
-# For Linux/macOS with curl
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# For Windows (PowerShell)
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Using pip (recommended)
-pip install uv
+git clone https://github.com/secureai4code/RobustEval-CLM
+cd RobustEval-CLM
+uv sync
+source .venv/bin/activate
 ```
 
-### Basic Installation
-If you only need basic functionality only with bitsanddytes quantization support:
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/adversarial-codegen
-cd adversarial-codegen
+Optional extras:
 
-# Install the package with basic dependencies
-uv pip install -e .
+```bash
+uv sync --extra scripts   # matplotlib / pandas / scipy for result plotting
+uv sync --extra dev       # pytest
 ```
 
-### Full Quantization Support
-If you want to use all quantization features:
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/adversarial-codegen
-cd adversarial-codegen
+The NLTK corpora required by the synonym attack (`wordnet`, `punkt`, ...) are
+fetched lazily on first import, so no post-install step is needed.
 
-# Install PyTorch first
-uv pip install torch>=2.5.1
+For the CanItEdit dataset, install Docker or Podman — the official
+`ghcr.io/nuprl/canitedit` container is used to execute generated edits.
 
-# Install with quantization dependencies
-uv pip install --no-build-isolation -e .[quant]
-```
+## Quick Start
 
-### Full Installation (Recommended)
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/adversarial-codegen
-cd adversarial-codegen
-
-# Install PyTorch first to avoid build issues
-uv pip install torch>=2.5.1
-
-# Install all dependencies including quantization support
-uv pip install --no-build-isolation -e .[all]
-```
-
-
-### Using pip (Alternative)
-If you prefer using traditional pip:
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/adversarial-codegen
-cd adversarial-codegen
-
-# Install PyTorch first
-pip install torch>=2.5.1
-
-# Install all dependencies
-pip install --no-build-isolation -e .[all]
-```
-
-Note: The `--no-build-isolation` flag is needed for proper installation of quantization dependencies like `autoawq`. UV is recommended over pip for its improved dependency resolution and installation speed.
-
-## 🎮 Usage
-After installation, you can use the main functionality through the command-line interface:
+The CLI entry point is `reval attack`:
 
 ```bash
-reval attack [OPTIONS]
-```
-
-
-### 🔑 Required Arguments
-
-- model_path: 📂 Path to the original model
-
-### ⚡ Optional Arguments
-
-#### 🤖 Model Configuration
-- model_type: Type of model (default: "codellama")
-- quantized_type: 🔧 Type of quantized model (optional)
-
-#### 💾 Save Options
-
-- save_prompts: Save generated prompts to the specific directory.
-- save_results: Save attack results to the specific directory.
-
-#### 📚 Dataset Options
-- dataset: 📚 Dataset to use ("humaneval" or "mbpp", default: "mbpp")
-- mini: 🔍 Use mini version of dataset (flag)
-
-#### 🎯 Attack Parameters
-- attack_method: Type of attack ("synonym", "random upper", "translate-and-back")
-- replacement_prob: Probability of replacement (default: 0.15)
-- max_synonyms: Maximum number of synonyms (default: 3)
-- input_type: Type of input (default: "prompt")
-- seed: Random seed for reproducibility
-
-#### 📦 Quantization Parameters
-- quant_method: Static quantization method ("bnb", "gptq", "awq")
-- quant_bits: Number of bits for quantization (4 or 8)
-- quant_type: Quantization type for 4-bit static quantization ("nf4", "nf4_2", "nf4_3")
-- quantize_embeddings: Whether to quantize embeddings (for dynamic quantization)
-
-#### 📊 Visualization
-- visualization: Enable/disable visualization output (default: False). Require save_results to be set.
-
-#### ⚙️ Generation Parameters
-- num_return_sequences: Number of responses to generate (default: 1)
-- max_length: Maximum generation length (default: 512)
-- temperature: Temperature for sampling (default: 0.7)
-- top_p: Top-p for sampling (default: 0.95)
-- num_beams: Number of beams for beam search (default: 10)
-- use_beam_search: Whether to use beam search (default: False)
-
-## 📝 Examples
-
-### 1. 🔰 Basic Usage:
-```bash
-# Attack original LLMs
 reval attack \
-    --model_path /path/to/model \
-    --save_prompts /path/to/save/prompts \
-    --save_results /path/to/save/results
+    --model_path deepseek-ai/deepseek-coder-1.3b-base \
+    --model_type vllm \
+    --dataset humaneval \
+    --attack_method synonym \
+    --save_prompts outputs/humaneval/deepseek-ai/deepseek-coder-1.3b-base/synonym/base \
+    --save_results outputs/humaneval/deepseek-ai/deepseek-coder-1.3b-base/synonym/base \
+    --max_length 512 \
+    --seed 42
 ```
 
-### 2. 🚀 Advanced usage with custom parameters:
+### Backend and quantization constraints
+
+- Most dense models run on the vLLM backend (`--model_type vllm`), but the
+  **StarCoder2 and CodeGen families must use the HF backend**
+  (`--model_type codellama`).
+- **MoE models** (`Qwen/Qwen3-Coder-30B-A3B-Instruct`,
+  `deepseek-ai/DeepSeek-Coder-V2-Lite-Base`) **support only 4-bit
+  quantization** (`--quant_bits 4`); 8-bit is not available for them.
+- For **vLLM + quantization**, deterministic generation requires a **single
+  GPU**: pass `--tensor_parallel_size 1` (optionally pinning the device via
+  `CUDA_VISIBLE_DEVICES`).
+
+`scripts/run_experiments.sh` drives the paper's full sweep
+(models × datasets × attacks × quantization levels) and encodes all three
+rules.
+
+## CLI Arguments
+
+**Model & backend**
+
+| Flag | Description |
+|------|-------------|
+| `--model_path` | HuggingFace repo id or local path. **Required.** |
+| `--model_type` | `vllm` (recommended), `codellama`, `starcoder`, `codegen`, `deepseek`, `incoder`, `magicoder`. Default `codellama`. |
+| `--quantized_type` | `static` to apply BNB quantization, or unset for full precision. |
+| `--tensor_parallel_size` | Tensor-parallel size for vLLM. Auto = all visible GPUs. |
+| `--gpu_memory_utilization` | vLLM memory fraction, e.g. `0.85`. Lower if OOM during sampler warmup. |
+
+**Quantization**
+
+| Flag | Description |
+|------|-------------|
+| `--quant_bits` | `4` or `8` (default `8`). |
+
+**Dataset & attack**
+
+| Flag | Description |
+|------|-------------|
+| `--dataset` | `mbpp`, `humaneval`, `canitedit`. |
+| `--attack_method` | See table above. |
+| `--noise_type`, `--noise_level` | For the `noise` attack. |
+| `--replacement_probability`, `--max_synonyms` | For `synonym`. |
+| `--char_change_probability`, `--max_char_changes` | For `char`. |
+| `--translation_model` | Back-translation model. Default `facebook/mbart-large-50-many-to-many-mmt`. |
+| `--attack_model`, `--attack_type`, `--adv_temperature`, `--adv_max_tokens`, `--api_path` | For `llm_attack`. |
+
+**Generation**
+
+| Flag | Description |
+|------|-------------|
+| `--max_length` | Max generated tokens. Use `4096` for CanItEdit, `512` otherwise. |
+| `--num_return_sequences` | Number of samples per prompt. |
+| `--temperature`, `--top_p` | Sampling params (used when `num_return_sequences > 1` and no beam search). |
+| `--num_beams`, `--use_beam_search` | Beam search params. |
+| `--seed` | Random seed. |
+
+**Output**
+
+| Flag | Description |
+|------|-------------|
+| `--save_prompts` | Directory for `{original,adversarial}_prompts.jsonl`. |
+| `--save_results` | Directory for `{original,adversarial}_results.json` and `pass_rates.json`. |
+| `--gen_ori` | Also generate outputs for the original (unperturbed) prompts. |
+| `--visualization` | Write Venn-diagram visualizations. Requires `--save_results`. |
+
+Both `--save_prompts` and `--save_results` are resumable: existing entries
+with a non-null `solution` field are reused on rerun.
+
+## Examples
+
+### 1. Full-precision vLLM, synonym attack on MBPP
+
 ```bash
-# Attack LLMs with a specific adversarial attack method (synonym) and generation method (temperature sampling).
 reval attack \
-    --model_path /path/to/model \
+    --model_path deepseek-ai/deepseek-coder-6.7b-base \
+    --model_type vllm \
     --dataset mbpp \
     --attack_method synonym \
-    ----replacement_probability 0.2 \
-    --max_synonyms 5 \
-    --temperature 0.8 \
-    --top_p 0.9 \
-    --num_beams 5 \
-    --seed 42 \
-    --save_prompts /path/to/save/prompts \
-    --save_results /path/to/save/results \
-    --visualization True
+    --save_prompts outputs/mbpp/deepseek-ai/deepseek-coder-6.7b-base/synonym/base \
+    --save_results outputs/mbpp/deepseek-ai/deepseek-coder-6.7b-base/synonym/base \
+    --seed 42
 ```
 
-### 3. 🔧 Using Static Quantization:
+### 2. StarCoder2 on the HF backend (`codellama`), destructure attack
+
+StarCoder2 and CodeGen models must use `--model_type codellama` instead of
+`vllm`:
+
 ```bash
-# Attack LLMs with static quant (4-bit quant achieved by bnb)
 reval attack \
-    --model_path /path/to/model \
+    --model_path bigcode/starcoder2-7b \
+    --model_type codellama \
+    --dataset mbpp \
+    --attack_method destructure \
+    --save_prompts outputs/mbpp/bigcode/starcoder2-7b/destructure/base \
+    --save_results outputs/mbpp/bigcode/starcoder2-7b/destructure/base \
+    --seed 42
+```
+
+### 3. 4-bit BNB + Gaussian weight noise on HumanEval (single GPU for determinism)
+
+```bash
+reval attack \
+    --model_path meta-llama/Llama-3.1-8B \
+    --model_type vllm \
     --quantized_type static \
-    --quant_method bnb \
     --quant_bits 4 \
-    --quant_type nf4 \
-    --save_prompts /path/to/save/prompts \
-    --save_results /path/to/save/results
+    --dataset humaneval \
+    --attack_method noise \
+    --noise_type gaussian \
+    --noise_level 1e-3 \
+    --save_prompts outputs/humaneval/meta-llama/Llama-3.1-8B/noise/gaussian/1e-3/bnb4 \
+    --save_results outputs/humaneval/meta-llama/Llama-3.1-8B/noise/gaussian/1e-3/bnb4 \
+    --tensor_parallel_size 1 \
+    --seed 42
 ```
 
-### 4. 🔄 Using Dynamic Quantization:
+### 4. Quantized MoE on CanItEdit with back-translation (Docker required)
+
+MoE models only support 4-bit quantization:
+
 ```bash
-# Attack LLMs with 8-bit quant
 reval attack \
-    --model_path /path/to/model \
-    --quantized_type dynamic \
-    --quant_bits 8 \
-    --quantize_embeddings True \ # Generally don't quantize embedding layer
-    --save_prompts /path/to/save/prompts \
-    --save_results /path/to/save/results
+    --model_path Qwen/Qwen3-Coder-30B-A3B-Instruct \
+    --model_type vllm \
+    --quantized_type static \
+    --quant_bits 4 \
+    --dataset canitedit \
+    --attack_method translate \
+    --max_length 4096 \
+    --save_prompts outputs/canitedit/Qwen/Qwen3-Coder-30B-A3B-Instruct/translate/bnb4 \
+    --save_results outputs/canitedit/Qwen/Qwen3-Coder-30B-A3B-Instruct/translate/bnb4 \
+    --tensor_parallel_size 1 \
+    --seed 42
 ```
 
-## 📤 Output
-The tool generates two types of outputs:
+## Output Layout
 
-1. 📝 Prompts: Saved to the directory specified by --save_prompts
-- Original prompts
-- Adversarially modified prompts
+Results are written under the hierarchy consumed by
+`scripts/generate_all.py`:
 
+```
+outputs/<dataset>/<org>/<model>/<attack>[/<noise_type>/<noise_level>]/<quant>/
+├── original_prompts.jsonl        # if --gen_ori
+├── adversarial_prompts.jsonl
+├── original_results.json         # if --gen_ori
+├── adversarial_results.json
+└── pass_rates.json               # {"base": <pass@1>, "plus": <pass@1>}
+```
 
-2. 📊 Results: Saved to the directory specified by --save_results
-- Model responses to original prompts
-- Model responses to adversarial prompts
-- Performance metrics and analysis
+Where `<quant>` is one of `base`, `bnb8`, `bnb4`. For CanItEdit, intermediate
+completions are placed in `original_completions/` and `adversarial_completions/`
+subfolders and evaluated by the Docker/Podman container.
 
-3. 📈 Visualizations: (When --visualization is enabled)
-   - Venn diagrams showing overlap between different attack methods
-   - Saved in the output folder
+## Reproducing Paper Results
 
-## 👥 Contributing
-We welcome contributions! Please feel free to submit a Pull Request.
-For questions or suggestions, please contact:
+All experimental results — the pass@1 summaries plus the raw data (adversarial
+prompts, model generations, and per-sample evaluation results) — are archived
+on Zenodo (~630 MB compressed):
 
-- 📧 Email: <a href="mailto:fangsen1996@gmail.com">fangsen1996@gmail.com</a>/<a href="mailto:sfang9@ncsu.edu">sfang9@ncsu.edu</a>
-- 💬 Open an issue
-- 🔀 Submit a PR
+> **DOI**: [10.5281/zenodo.22737766](https://zenodo.org/records/22737766)
 
-## 🙏 Acknowledgments
-This project builds upon and is inspired by several excellent works in the field:
+Download `RobustEval-CLM-raw-results.tar.gz` and extract it at the repository
+root, where it unpacks as `outputs_public/`:
 
-- 🤗 HuggingFace Transformers - For transformer models and utilities
-- 📚 MBPP Dataset - For evaluation datasets
-- 🧪 HumanEval - For evaluation protocols and datasets
-- ⚡ PEFT - For efficient model fine-tuning methods
-- 🔍 EvalPlus - For enhanced evaluation methods
+```bash
+wget https://zenodo.org/records/22737766/files/RobustEval-CLM-raw-results.tar.gz
+tar xzf RobustEval-CLM-raw-results.tar.gz    # -> outputs_public/
+```
 
-Special thanks to all these projects that made our work possible.
+The tree holds 2,436 experiment folders — 20 models × 3 datasets ×
+(4 adversarial attacks + 2 noise types × 6 intensity levels) × quantization
+levels — each with a `pass_rates.json` (`{"base": <pass@1>, "plus": <pass@1>}`:
+the base and plus test-set variants for HumanEval/MBPP, or the Descriptive and
+Lazy prompt variants for CanItEdit) next to the raw prompts and generations.
+The clean (unattacked) baseline for a model+quantization is the noise entry at
+level `0.0`. CodeGen models have no CanItEdit results (their samples exceed
+the 2,048-token context window), so those table cells render as `-`.
 
-## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+With the archive in place, all tables and figures regenerate directly:
 
+```bash
+uv sync --extra scripts    # matplotlib / scipy
+python scripts/generate_all.py
+```
 
+`generate_all.py` writes into `statistic_results/`: `passat1.tex`,
+`passrate_rl.tex`, `passat1_noise.tex`, `noise_results.csv`, `rrs.tex`, and
+`noise_robustness_figure.{pdf,png}`.
 
+Additional analysis scripts (all read `outputs_public/` the same way):
+
+| Script | Output |
+|--------|--------|
+| `scripts/stat_analysis.py` | Wilcoxon signed-rank tests + bootstrap CIs (statistical validation). |
+| `scripts/plot_noise_combined.py` | `plots/RQ3.{pdf,png}` — noise robustness grid. |
+| `scripts/plot_rrs_translate_bar.py` | `plots/RQ3_adv.{pdf,png}` — RRS under the translate attack. |
+| `scripts/plot_noise_per_model.py` | `noise_plots/<model>.{pdf,png}` — per-model noise curves. |
+| `scripts/stat_attack_drop.py` | Per-attack performance-drop CSV + plot. |
+| `scripts/avg_quant_drop.py` | Average clean pass@1 cost of 8-bit / 4-bit quantization. |
+
+## Repository Layout
+
+```
+src/
+├── core/
+│   ├── datasets/          # adversarial dataset wrapper (LLM-based attacks)
+│   └── models/            # HF, vLLM, and quantized model implementations
+│       └── vllm_noise_injector.py  # RPC-based noise injection for vLLM workers
+├── evaluator/
+│   ├── attack_evaluator/
+│   │   ├── attack_config.py
+│   │   ├── attack_evaluator.py     # CLI entry point (reval)
+│   │   ├── attack_registry.py
+│   │   ├── attacks/                # char, synonym, translate, noise, chatgpt, ...
+│   │   └── framework/              # end-to-end orchestration
+│   └── utils/                      # evaluation, translation helpers, visualization
+└── utils/                          # content masking, function extraction
+scripts/
+├── metadata.py                     # models / datasets / attacks / quantization metadata
+├── generate_all.py                 # regenerate all paper tables and figures
+├── run_experiments.sh              # batch driver: models x datasets x attacks x quant
+└── ...                             # statistics and plotting scripts
+outputs_public/                     # extracted Zenodo results archive (gitignored)
+statistic_results/                  # generated tables / figures (gitignored)
+```
+
+## Citation
+
+```bibtex
+@article{fang2026smaller,
+  title   = {Smaller = Weaker? Benchmarking Robustness of Quantized LLMs in Code Generation},
+  author  = {Fang, Sen and Ding, Weiyuan and Mastropaolo, Antonio and Xu, Bowen},
+  journal = {IEEE Transactions on Software Engineering},
+  year    = {2026},
+  note    = {Under review}
+}
+```
+
+## Contributing
+
+Contributions are welcome — please open an issue or PR. Questions:
+<fangsen1996@gmail.com> / <sfang9@ncsu.edu>.
+
+## Acknowledgments
+
+- [vLLM](https://github.com/vllm-project/vllm) — inference engine.
+- [EvalPlus](https://github.com/evalplus/evalplus) — HumanEval+/MBPP+ evaluation.
+- [nuprl/CanItEdit](https://github.com/nuprl/CanItEdit) — code-editing benchmark and evaluator image.
+- [BitsAndBytes](https://github.com/TimDettmers/bitsandbytes) — 4/8-bit quantization.
+- [HuggingFace Transformers](https://github.com/huggingface/transformers) / [datasets](https://github.com/huggingface/datasets).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

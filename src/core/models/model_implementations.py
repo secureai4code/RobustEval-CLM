@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional, Set, Union
 
 import torch
+from huggingface_hub.constants import HF_HOME
 from torch import dtype
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from transformers.generation import GenerationConfig
-
-from src.utils.function_extractor import extract_functions
 
 from .base_model import BaseModel
 
@@ -117,7 +117,8 @@ class CodeLLaMAModel(BaseModel):
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-    
+        self.tokenizer.padding_side = "left"
+
     def _get_generation_config(self, strategy: GenerationStrategy) -> GenerationConfig:
         """Create generation configuration based on strategy"""
         if strategy.num_return_sequences == 1:
@@ -149,32 +150,14 @@ class CodeLLaMAModel(BaseModel):
             )
     
     def _extract_completion(self, full_text: str, prompt: str) -> str:
-        """Extract only the completion part from the generated text"""
-        
-        output = full_text[len(prompt):].lstrip()
-        gen_solution = extract_functions(output)
-
-        if gen_solution is not None:
-            return gen_solution
-        else:
-            return output
+        """Extract only the completion part from the generated text (no function extraction)."""
+        return full_text[len(prompt):]
 
     def generate(
         self,
         prompt: str,
     ) -> Union[str, List[str]]:
-        """
-        Generate completion(s) for a given prompt.
-        
-        Args:
-            prompt: Input prompt text
-            **kwargs: Generation parameters to override defaults in GenerationStrategy
-                     (num_return_sequences, max_length, temperature, top_p, num_beams, use_beam_search)
-        
-        Returns:
-            Single string if num_return_sequences=1, otherwise list of strings
-        """
-        # Start with default strategy and update with any provided kwargs
+        """Generate completion(s) for a given prompt."""
         strategy = GenerationStrategy()
         if self.gen_config:
             strategy_dict = strategy.__dict__.copy()
@@ -190,7 +173,6 @@ class CodeLLaMAModel(BaseModel):
             pad_token_id=self.tokenizer.pad_token_id
         )
 
-        # Decode all sequences
         decoded_outputs = [
             self._extract_completion(
                 self.tokenizer.decode(output, skip_special_tokens=True),
@@ -199,11 +181,38 @@ class CodeLLaMAModel(BaseModel):
             for output in outputs
         ]
 
-        # Return single string if num_return_sequences=1, otherwise list
         return decoded_outputs[0] if strategy.num_return_sequences == 1 else decoded_outputs
 
-    def batch_generate(self, prompts: List[str], **kwargs) -> List[str]:
-        return [self.generate(prompt, **kwargs) for prompt in prompts]
+    def batch_generate(self, prompts: List[str], batch_size: int = 16, **kwargs) -> List[str]:
+        strategy = GenerationStrategy()
+        if self.gen_config:
+            strategy_dict = strategy.__dict__.copy()
+            strategy_dict.update(self.gen_config)
+            strategy = GenerationStrategy(**strategy_dict)
+
+        generation_config = self._get_generation_config(strategy)
+        results = []
+
+        num_batches = (len(prompts) + batch_size - 1) // batch_size
+        for start in tqdm(range(0, len(prompts), batch_size), total=num_batches, desc="Batch generating"):
+            batch = prompts[start:start + batch_size]
+            inputs = self.tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+            ).to(self.model.device)
+
+            outputs = self.model.generate(
+                **inputs,
+                generation_config=generation_config,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
+
+            for i, output in enumerate(outputs):
+                full_text = self.tokenizer.decode(output, skip_special_tokens=True)
+                results.append(self._extract_completion(full_text, batch[i]))
+
+        return results
 
 
 class DynamicQuantizedModel(BaseModel):
@@ -302,18 +311,11 @@ class DynamicQuantizedModel(BaseModel):
             )
     
     def _extract_completion(self, full_text: str, prompt: str) -> str:
-        """Extract only the completion part from the generated text"""
-        
-        output = full_text[len(prompt):].lstrip()
-        gen_solution = extract_functions(output)
-
-        if gen_solution is not None:
-            return gen_solution
-        else:
-            return output
+        """Extract only the completion part from the generated text (no function extraction)."""
+        return full_text[len(prompt):]
 
     def generate(
-        self, 
+        self,
         prompt: str,
     ) -> Union[str, List[str]]:
         """Generate completions using the quantized model on CPU"""
@@ -371,6 +373,7 @@ class StaticQuantizedModel(BaseModel):
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        self.tokenizer.padding_side = "left"
 
         if self.quant_config.method == "bnb":
             print(f"Loading model with BitsAndBytes quantization ({self.quant_config.bits} bits)")
@@ -448,7 +451,7 @@ class StaticQuantizedModel(BaseModel):
         """Create generation configuration based on strategy"""
         if strategy.num_return_sequences == 1:
             # Use greedy decoding for single sequence
-            print("Using greedy decoding")
+            # print("Using greedy decoding")
             return GenerationConfig(
                 max_length=strategy.max_length,
                 num_return_sequences=1,
@@ -475,31 +478,14 @@ class StaticQuantizedModel(BaseModel):
             )
     
     def _extract_completion(self, full_text: str, prompt: str) -> str:
-        """Extract only the completion part from the generated text"""
-        
-        output = full_text[len(prompt):].lstrip()
-        gen_solution = extract_functions(output)
-
-        if gen_solution is not None:
-            return gen_solution
-        else:
-            return output
+        """Extract only the completion part from the generated text (no function extraction)."""
+        return full_text[len(prompt):]
 
     def generate(
-        self, 
+        self,
         prompt: str,
     ) -> Union[str, List[str]]:
-        """
-        Generate completion(s) for a given prompt.
-        
-        Args:
-            prompt: Input prompt text
-            **kwargs: Generation parameters to override defaults in GenerationStrategy
-                     (num_return_sequences, max_length, temperature, top_p, num_beams, use_beam_search)
-        
-        Returns:
-            Single string if num_return_sequences=1, otherwise list of strings
-        """
+        """Generate completion(s) for a given prompt."""
         # Start with default strategy and update with any provided kwargs
         strategy = GenerationStrategy()
         if self.gen_config:
@@ -528,8 +514,36 @@ class StaticQuantizedModel(BaseModel):
         # Return single string if num_return_sequences=1, otherwise list
         return decoded_outputs[0] if strategy.num_return_sequences == 1 else decoded_outputs
 
-    def batch_generate(self, prompts: List[str], **kwargs) -> List[str]:
-        return [self.generate(prompt, **kwargs) for prompt in prompts]
+    def batch_generate(self, prompts: List[str], batch_size: int = 16, **kwargs) -> List[str]:
+        strategy = GenerationStrategy()
+        if self.gen_config:
+            strategy_dict = strategy.__dict__.copy()
+            strategy_dict.update(self.gen_config)
+            strategy = GenerationStrategy(**strategy_dict)
+
+        generation_config = self._get_generation_config(strategy)
+        results = []
+
+        num_batches = (len(prompts) + batch_size - 1) // batch_size
+        for start in tqdm(range(0, len(prompts), batch_size), total=num_batches, desc="Batch generating"):
+            batch = prompts[start:start + batch_size]
+            inputs = self.tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+            ).to(self.model.device)
+
+            outputs = self.model.generate(
+                **inputs,
+                generation_config=generation_config,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
+
+            for i, output in enumerate(outputs):
+                full_text = self.tokenizer.decode(output, skip_special_tokens=True)
+                results.append(self._extract_completion(full_text, batch[i]))
+
+        return results
 
 
 class StarCoderModel(BaseModel):
@@ -680,7 +694,7 @@ class VLLMModel(BaseModel):
         self.gen_config = kwargs.get('generation_config')
         self.tensor_parallel_size = kwargs.get('tensor_parallel_size', 1)
         self.gpu_memory_utilization = kwargs.get('gpu_memory_utilization', 0.85)
-        self.max_model_len = kwargs.get('max_model_len', 8192)
+        self.max_model_len = kwargs.get('max_model_len', 4096)
         self.seed = kwargs.get('seed', 42)
         self.load()
 
@@ -734,43 +748,12 @@ class VLLMModel(BaseModel):
                 top_p=strategy.top_p,
             )
 
-    def _extract_completion(self, completion: str, prompt: str, concat_prompt: bool = False) -> str:
-        """Extract function from completion text
-        
-        Args:
-            completion: The completion text (vLLM already strips the prompt)
-            prompt: The original prompt
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            Extracted completion text
-        """
-        # If concat_prompt is True, concatenate prompt and completion before extraction
-        if concat_prompt:
-            code_to_extract = prompt + completion
-        else:
-            code_to_extract = completion
-        
-        gen_solution = extract_functions(code_to_extract)
+    def _extract_completion(self, completion: str, prompt: str) -> str:
+        """Return completion as-is (no function extraction; done in attack_framework)."""
+        return completion
 
-        if gen_solution is not None:
-            return gen_solution
-        else:
-            return code_to_extract
-
-    def generate(self, prompt: str, concat_prompt: bool = False) -> Union[str, List[str]]:
-        """
-        Generate completion(s) for a given prompt using vLLM.
-        
-        Args:
-            prompt: Input prompt text
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            Single string if num_return_sequences=1, otherwise list of strings
-        """
+    def generate(self, prompt: str) -> Union[str, List[str]]:
+        """Generate completion(s) for a given prompt using vLLM."""
         strategy = GenerationStrategy()
         if self.gen_config:
             strategy_dict = strategy.__dict__.copy()
@@ -778,30 +761,20 @@ class VLLMModel(BaseModel):
             strategy = GenerationStrategy(**strategy_dict)
 
         sampling_params = self._get_sampling_params(strategy)
-        
+
         print(f"Generating with prompt: {prompt}")
         outputs = self.model.generate([prompt], sampling_params)
         print("Finished generation")
 
-        # vLLM output.text contains only the completion, not the full text
         decoded_outputs = []
         for output in outputs[0].outputs:
             completion = output.text
-            decoded_outputs.append(self._extract_completion(completion, prompt, concat_prompt))
+            decoded_outputs.append(self._extract_completion(completion, prompt))
 
         return decoded_outputs[0] if strategy.num_return_sequences == 1 else decoded_outputs
 
-    def batch_generate(self, prompts: List[str], concat_prompt: bool = False, **kwargs) -> List[str]:
-        """Efficient batch generation using vLLM
-        
-        Args:
-            prompts: List of input prompts
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            List of generated completions
-        """
+    def batch_generate(self, prompts: List[str], **kwargs) -> List[str]:
+        """Efficient batch generation using vLLM."""
         strategy = GenerationStrategy()
         if self.gen_config:
             strategy_dict = strategy.__dict__.copy()
@@ -809,15 +782,14 @@ class VLLMModel(BaseModel):
             strategy = GenerationStrategy(**strategy_dict)
 
         sampling_params = self._get_sampling_params(strategy)
-        
+
         outputs = self.model.generate(prompts, sampling_params)
-        
-        # vLLM output.text contains only the completion, not the full text
+
         results = []
         for prompt, output in zip(prompts, outputs):
             completion = output.outputs[0].text
-            results.append(self._extract_completion(completion, prompt, concat_prompt))
-        
+            results.append(self._extract_completion(completion, prompt))
+
         return results
 
 
@@ -832,10 +804,13 @@ class VLLMQuantizedModel(BaseModel):
         
         self.gen_config = kwargs.get('generation_config')
         self.tensor_parallel_size = kwargs.get('tensor_parallel_size', 1)
-        self.gpu_memory_utilization = kwargs.get('gpu_memory_utilization', 0.85)
-        self.max_model_len = kwargs.get('max_model_len', 8192)
+        # BnB inflight quantization dequantizes weights at runtime (for MoE models,
+        # whole per-layer expert tensors) in transient buffers that vLLM's memory
+        # budget does not account for, so leave extra headroom by default.
+        self.gpu_memory_utilization = kwargs.get('gpu_memory_utilization', 0.88)
+        self.max_model_len = kwargs.get('max_model_len', 4096)
         self.seed = kwargs.get('seed', 42)
-        
+
         super().__init__(model_path, **kwargs)
         self.load()
 
@@ -849,33 +824,124 @@ class VLLMQuantizedModel(BaseModel):
             )
 
         print(f"Loading model with vLLM + BNB quantization ({self.quant_config.bits} bits)")
-        
-        # Map quantization config to vLLM format
-        quantization = None
-        if self.quant_config.bits == 8:
-            quantization = "bitsandbytes"
-        elif self.quant_config.bits == 4:
-            quantization = "bitsandbytes"
+
+        if self.quant_config.bits == 4:
+            self._load_4bit()
+        elif self.quant_config.bits == 8:
+            self._load_8bit()
         else:
             raise ValueError(f"Unsupported quantization bits: {self.quant_config.bits}")
 
+        self.tokenizer = self.model.get_tokenizer()
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
+        print("vLLM quantized model loaded successfully")
+        print(self.get_memory_stats())
+
+    def _load_4bit(self) -> None:
+        """Load model with vLLM's native 4-bit inflight BNB quantization."""
         self.model = LLM(
             model=self.model_path,
-            quantization=quantization,
+            quantization="bitsandbytes",
             tensor_parallel_size=self.tensor_parallel_size,
             gpu_memory_utilization=self.gpu_memory_utilization,
             max_model_len=self.max_model_len,
             seed=self.seed,
             trust_remote_code=True,
         )
-        
-        self.tokenizer = self.model.get_tokenizer()
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        
-        print("vLLM quantized model loaded successfully")
-        print(self.get_memory_stats())
+
+    @staticmethod
+    def _copy_missing_processor_files(model_path: str, cache_dir: str) -> None:
+        """Copy preprocessor/processor configs from the original HF model snapshot.
+
+        Multimodal models (e.g. Gemma-3) ship with preprocessor_config.json and
+        processor_config.json that ``save_pretrained`` on the *model* object does
+        not persist.  vLLM expects these files when it resolves the model, so we
+        copy any that are missing from the original HF hub snapshot.
+        """
+        import shutil
+
+        from huggingface_hub import snapshot_download
+
+        extra_files = [
+            "preprocessor_config.json",
+            "processor_config.json",
+            "chat_template.json",
+        ]
+        needed = [f for f in extra_files if not os.path.exists(os.path.join(cache_dir, f))]
+        if not needed:
+            return
+
+        try:
+            snapshot_dir = snapshot_download(model_path, allow_patterns=needed)
+        except Exception:
+            return
+
+        for fname in needed:
+            src = os.path.join(snapshot_dir, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(cache_dir, fname))
+                print(f"Copied {fname} from original model into cache")
+
+    def _load_8bit(self) -> None:
+        """Load 8-bit BNB model for vLLM.
+
+        vLLM does not support 8-bit inflight quantization, so we:
+        1. Quantize the model to 8-bit using HuggingFace Transformers + BNB
+        2. Save the pre-quantized checkpoint under the Hugging Face cache root
+        3. Free the HF model from GPU memory
+        4. Copy any missing processor configs from the original model
+        5. Load the pre-quantized checkpoint into vLLM
+        """
+        import gc
+
+        cache_dir = os.path.join(
+            HF_HOME, "vllm_bnb8_cache", self.model_path.replace("/", "_")
+        )
+        config_path = os.path.join(cache_dir, "config.json")
+
+        if os.path.exists(config_path):
+            print(f"Found cached 8-bit checkpoint at {cache_dir}, skipping quantization")
+        else:
+            print("Quantizing model to 8-bit with HuggingFace Transformers + BNB...")
+            bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            hf_model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                quantization_config=bnb_config,
+                torch_dtype=self.quant_config.compute_dtype,
+                device_map="auto",
+                trust_remote_code=True,
+            )
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.model_path, trust_remote_code=True
+            )
+
+            print(f"Saving 8-bit checkpoint to {cache_dir}...")
+            os.makedirs(cache_dir, exist_ok=True)
+            hf_model.save_pretrained(cache_dir)
+            tokenizer.save_pretrained(cache_dir)
+
+            del hf_model, tokenizer
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            print("Freed HuggingFace model from memory")
+
+        self._copy_missing_processor_files(self.model_path, cache_dir)
+
+        print("Loading 8-bit checkpoint into vLLM...")
+        self.model = LLM(
+            model=cache_dir,
+            quantization="bitsandbytes",
+            load_format="bitsandbytes",
+            tensor_parallel_size=self.tensor_parallel_size,
+            gpu_memory_utilization=self.gpu_memory_utilization,
+            max_model_len=self.max_model_len,
+            seed=self.seed,
+            trust_remote_code=True,
+        )
 
     def get_memory_stats(self) -> dict:
         """Get current GPU memory statistics"""
@@ -918,43 +984,12 @@ class VLLMQuantizedModel(BaseModel):
                 top_p=strategy.top_p,
             )
 
-    def _extract_completion(self, completion: str, prompt: str, concat_prompt: bool = False) -> str:
-        """Extract function from completion text
-        
-        Args:
-            completion: The completion text (vLLM already strips the prompt)
-            prompt: The original prompt
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            Extracted completion text
-        """
-        # If concat_prompt is True, concatenate prompt and completion before extraction
-        if concat_prompt:
-            code_to_extract = prompt + completion
-        else:
-            code_to_extract = completion
-        
-        gen_solution = extract_functions(code_to_extract)
+    def _extract_completion(self, completion: str, prompt: str) -> str:
+        """Return completion as-is (no function extraction; done in attack_framework)."""
+        return completion
 
-        if gen_solution is not None:
-            return gen_solution
-        else:
-            return code_to_extract
-    
-    def generate(self, prompt: str, concat_prompt: bool = False) -> Union[str, List[str]]:
-        """
-        Generate completion(s) for a given prompt using vLLM with quantization.
-        
-        Args:
-            prompt: Input prompt text
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            Single string if num_return_sequences=1, otherwise list of strings
-        """
+    def generate(self, prompt: str) -> Union[str, List[str]]:
+        """Generate completion(s) for a given prompt using vLLM with quantization."""
         strategy = GenerationStrategy()
         if self.gen_config:
             strategy_dict = strategy.__dict__.copy()
@@ -962,30 +997,20 @@ class VLLMQuantizedModel(BaseModel):
             strategy = GenerationStrategy(**strategy_dict)
 
         sampling_params = self._get_sampling_params(strategy)
-        
+
         print(f"Generating with prompt: {prompt}")
         outputs = self.model.generate([prompt], sampling_params)
         print("Finished generation")
 
-        # vLLM output.text contains only the completion, not the full text
         decoded_outputs = []
         for output in outputs[0].outputs:
             completion = output.text
-            decoded_outputs.append(self._extract_completion(completion, prompt, concat_prompt))
+            decoded_outputs.append(self._extract_completion(completion, prompt))
 
         return decoded_outputs[0] if strategy.num_return_sequences == 1 else decoded_outputs
 
-    def batch_generate(self, prompts: List[str], concat_prompt: bool = False, **kwargs) -> List[str]:
-        """Efficient batch generation using vLLM with quantization
-        
-        Args:
-            prompts: List of input prompts
-            concat_prompt: Whether to concatenate prompt with output before extraction.
-                          True for humaneval (code completion), False for mbpp (complete generation).
-        
-        Returns:
-            List of generated completions
-        """
+    def batch_generate(self, prompts: List[str], **kwargs) -> List[str]:
+        """Efficient batch generation using vLLM with quantization."""
         strategy = GenerationStrategy()
         if self.gen_config:
             strategy_dict = strategy.__dict__.copy()
@@ -993,13 +1018,12 @@ class VLLMQuantizedModel(BaseModel):
             strategy = GenerationStrategy(**strategy_dict)
 
         sampling_params = self._get_sampling_params(strategy)
-        
+
         outputs = self.model.generate(prompts, sampling_params)
-        
-        # vLLM output.text contains only the completion, not the full text
+
         results = []
         for prompt, output in zip(prompts, outputs):
             completion = output.outputs[0].text
-            results.append(self._extract_completion(completion, prompt, concat_prompt))
-        
+            results.append(self._extract_completion(completion, prompt))
+
         return results

@@ -41,24 +41,30 @@ class AttackRegistry:
             from src.evaluator.attack_evaluator.attacks import (  # noqa: F401
                 CharacterCaseAttack,
                 ChatGPTAttack,
+                DestructureAttack,
+                LLMParaphraseAttack,
                 NaturalNoiseAttack,
                 NoiseAttack,
                 SemanticAttack,
                 StructuralAttack,
+                StructuredFormatAttack,
                 SynonymAttack,
                 TranslationAttack,
             )
 
             cls.register("synonym", SynonymAttack)
             cls.register("char", CharacterCaseAttack)
+            cls.register("destructure", DestructureAttack)
             cls.register("translation", TranslationAttack)
             cls.register("translate", TranslationAttack)
             cls.register("chatgpt", ChatGPTAttack)
             cls.register("llm_attack", ChatGPTAttack)
+            cls.register("llm_paraphrase", LLMParaphraseAttack)
             cls.register("noise", NoiseAttack)
             cls.register("natural_noise", NaturalNoiseAttack)
             cls.register("semantic", SemanticAttack)
             cls.register("structural", StructuralAttack)
+            cls.register("structured", StructuredFormatAttack)
 
         except ImportError as exc:
             print(f"Warning: Could not import some attack classes: {exc}")
